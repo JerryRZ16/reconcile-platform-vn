@@ -1,11 +1,19 @@
-import { Card, Table, Tag, Alert } from 'antd'
-import { fmtVND } from '../../data/mockData'
+import { Card, Table, Tag, Alert, Typography } from 'antd'
 import type { CoverageCell } from '../../data/mockData'
+import type { CountryProfile } from '../../profiles'
 
-export default function CoverageMatrix({ data }: { data: CoverageCell[] }) {
+const { Text } = Typography
+
+interface Props {
+  data: CoverageCell[];
+  profile: CountryProfile;
+}
+
+export default function CoverageMatrix({ data, profile }: Props) {
   const uncovered = data.filter((d) => !d.cover)
+  const [dimA, dimB] = profile.coverageDef.dims
   return (
-    <Card title="全覆盖检查（order_source × pay_type 组合归属）" style={{ marginBottom: 16 }}>
+    <Card title={profile.coverageDef.title} style={{ marginBottom: 16 }}>
       <Alert
         type={uncovered.length ? 'error' : 'success'} showIcon style={{ marginBottom: 12 }}
         message={
@@ -17,10 +25,10 @@ export default function CoverageMatrix({ data }: { data: CoverageCell[] }) {
       <Table
         size="small" rowKey={(r) => `${r.source}-${r.payType}`} dataSource={data} pagination={false}
         columns={[
-          { title: 'order_source', dataIndex: 'source', width: 110, render: (v) => <Text code>{v}</Text> },
-          { title: 'pay_type', dataIndex: 'payType', width: 100, render: (v) => <Text code>{v}</Text> },
+          { title: dimA, dataIndex: 'source', width: 110, render: (v) => <Text code>{v}</Text> },
+          { title: dimB, dataIndex: 'payType', width: 100, render: (v) => <Text code>{v}</Text> },
           { title: '笔数', dataIndex: 'cnt', align: 'right', render: (v) => <span className="stat-number">{v.toLocaleString()}</span> },
-          { title: '金额 (VND)', dataIndex: 'amt', align: 'right', render: (v) => <span className="stat-number">{fmtVND(v)}</span> },
+          { title: `金额 (${profile.currency.code})`, dataIndex: 'amt', align: 'right', render: (v) => <span className="stat-number">{profile.currency.short(v)}</span> },
           {
             title: '归属通道', dataIndex: 'owner',
             render: (v, r) => <Tag color={r.cover ? 'blue' : 'red'}>{v}</Tag>,
@@ -31,6 +39,3 @@ export default function CoverageMatrix({ data }: { data: CoverageCell[] }) {
     </Card>
   )
 }
-
-import { Typography } from 'antd'
-const { Text } = Typography

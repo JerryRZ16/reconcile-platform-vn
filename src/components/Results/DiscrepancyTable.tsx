@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Card, Table, Tag, Select, Input, Space, Button, Popover, Typography } from 'antd'
-import { fmtVNDFull } from '../../data/mockData'
 import type { Discrepancy, DiffStatus } from '../../data/mockData'
+import type { CountryProfile } from '../../profiles'
 
 const { Text } = Typography
 
@@ -13,11 +13,17 @@ const STATUS_COLOR: Record<DiffStatus, string> = { pending: 'orange', processed:
 const STATUS_LABEL: Record<DiffStatus, string> = { pending: '待处理', processed: '已处理', ignored: '可忽略' }
 const CHANNEL_COLOR: Record<string, string> = { ONLINE: 'blue', INSTORE: 'purple', CASH: 'red', L2: 'orange', REFUND: 'green' }
 
-export default function DiscrepancyTable({ data }: { data: Discrepancy[] }) {
+interface Props {
+  data: Discrepancy[];
+  profile: CountryProfile;
+}
+
+export default function DiscrepancyTable({ data, profile }: Props) {
   const [channel, setChannel] = useState<string>()
   const [root, setRoot] = useState<string>()
   const [status, setStatus] = useState<string>()
   const [kw, setKw] = useState('')
+  const cur = profile.currency
 
   const filtered = useMemo(
     () =>
@@ -34,6 +40,9 @@ export default function DiscrepancyTable({ data }: { data: Discrepancy[] }) {
     [data, channel, root, status, kw],
   )
 
+  // 通道/根因选项从数据动态提取（不再写死 5 个枚举）
+  const channelOptions = [...new Set(data.map((d) => d.channel).filter(Boolean))]
+    .map((c) => ({ value: c, label: c }))
   const rootOptions = [...new Set(data.map((d) => d.root))].map((r) => ({
     value: r,
     label: `${r} · ${data.find((d) => d.root === r)!.rootLabel}`,
@@ -54,8 +63,7 @@ export default function DiscrepancyTable({ data }: { data: Discrepancy[] }) {
         <Space wrap>
           <Select
             allowClear placeholder="通道" style={{ width: 110 }} size="small"
-            value={channel} onChange={setChannel}
-            options={['ONLINE', 'INSTORE', 'CASH', 'L2', 'REFUND'].map((c) => ({ value: c, label: c }))}
+            value={channel} onChange={setChannel} options={channelOptions}
           />
           <Select
             allowClear placeholder="根因" style={{ width: 180 }} size="small"
@@ -85,11 +93,11 @@ export default function DiscrepancyTable({ data }: { data: Discrepancy[] }) {
           },
           {
             title: '通道', dataIndex: 'channel', width: 90,
-            render: (v) => <Tag color={CHANNEL_COLOR[v]}>{v}</Tag>,
+            render: (v) => <Tag color={CHANNEL_COLOR[v as string] || 'default'}>{v}</Tag>,
           },
           {
             title: '根因', dataIndex: 'root', width: 70,
-            render: (v) => <Tag color={ROOT_COLORS[v as string]}>{v}</Tag>,
+            render: (v) => <Tag color={ROOT_COLORS[v as string] || 'default'}>{v}</Tag>,
           },
           { title: '根因说明', dataIndex: 'rootLabel', width: 170, ellipsis: true },
           { title: '门店', dataIndex: 'storeNo', width: 70, render: (v) => v || '—' },
@@ -97,10 +105,10 @@ export default function DiscrepancyTable({ data }: { data: Discrepancy[] }) {
             title: '金额', dataIndex: 'amount', align: 'right', width: 130,
             render: (v, r) => (
               <div>
-                <div className="stat-number">{fmtVNDFull(v)}</div>
+                <div className="stat-number">{cur.full(v)}</div>
                 {r.diffAmt ? (
                   <Text type="danger" style={{ fontSize: 11 }}>
-                    差异 {fmtVNDFull(r.diffAmt)}
+                    差异 {cur.full(r.diffAmt)}
                   </Text>
                 ) : null}
               </div>

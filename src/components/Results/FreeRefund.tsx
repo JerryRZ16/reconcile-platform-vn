@@ -1,19 +1,25 @@
 import { Card, Table, Tag, Statistic, Row, Col, Alert, Typography } from 'antd'
+import type { FreeOrder, RefundItem } from '../../data/mockData'
+import type { CountryProfile } from '../../profiles'
 
 const { Text } = Typography
-import { fmtVNDFull } from '../../data/mockData'
-import type { FreeOrder, RefundItem } from '../../data/mockData'
 
-const VERIFY: Record<string, { label: string; color: string }> = {
-  ok: { label: '正常免单', color: 'green' },
-  include: { label: '全额收款 · 纳入收入', color: 'red' },
-  manual: { label: '需人工确认', color: 'orange' },
+interface FreeProps {
+  data: FreeOrder[];
+  profile: CountryProfile;
 }
 
-export function FreeOrders({ data }: { data: FreeOrder[] }) {
+interface RefundProps {
+  data: RefundItem[];
+  profile: CountryProfile;
+}
+
+export function FreeOrders({ data, profile }: FreeProps) {
   const include = data.filter((d) => d.verify === 'include')
+  const verify = profile.freeRefundDef.verifyLabels
+  const cur = profile.currency
   return (
-    <Card title="免单验证（pay_type=500）" style={{ marginBottom: 16 }}>
+    <Card title={profile.freeRefundDef.freeTitle} style={{ marginBottom: 16 }}>
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col span={8}><Statistic title="免单单总数" value={data.length} suffix="笔" /></Col>
         <Col span={8}>
@@ -25,7 +31,7 @@ export function FreeOrders({ data }: { data: FreeOrder[] }) {
         <Col span={8}>
           <Statistic
             title="全额收款金额（漏记收入风险）"
-            value={fmtVNDFull(include.reduce((s, d) => s + d.total, 0))}
+            value={cur.full(include.reduce((s, d) => s + d.total, 0))}
             valueStyle={{ color: '#dc2626', fontSize: 15 }}
           />
         </Col>
@@ -39,10 +45,10 @@ export function FreeOrders({ data }: { data: FreeOrder[] }) {
         columns={[
           { title: '订单号', dataIndex: 'orderNo', render: (v) => <Text code style={{ fontSize: 12 }}>{v}</Text> },
           { title: '门店', dataIndex: 'storeNo', width: 80 },
-          { title: 'pay', dataIndex: 'amount', align: 'right', render: (v) => <span className="stat-number">{fmtVNDFull(v)}</span> },
-          { title: 'total', dataIndex: 'total', align: 'right', render: (v) => <span className="stat-number">{fmtVNDFull(v)}</span> },
-          { title: 'disc', dataIndex: 'disc', align: 'right', render: (v) => <span className="stat-number">{fmtVNDFull(v)}</span> },
-          { title: '验证结论', dataIndex: 'verify', render: (v) => <Tag color={VERIFY[v].color}>{VERIFY[v].label}</Tag> },
+          { title: 'pay', dataIndex: 'amount', align: 'right', render: (v) => <span className="stat-number">{cur.full(v)}</span> },
+          { title: 'total', dataIndex: 'total', align: 'right', render: (v) => <span className="stat-number">{cur.full(v)}</span> },
+          { title: 'disc', dataIndex: 'disc', align: 'right', render: (v) => <span className="stat-number">{cur.full(v)}</span> },
+          { title: '验证结论', dataIndex: 'verify', render: (v) => <Tag color={verify[v as keyof typeof verify]?.color || 'default'}>{verify[v as keyof typeof verify]?.label || v}</Tag> },
           { title: '备注', dataIndex: 'note' },
         ]}
       />
@@ -50,14 +56,15 @@ export function FreeOrders({ data }: { data: FreeOrder[] }) {
   )
 }
 
-export function Refunds({ data }: { data: RefundItem[] }) {
+export function Refunds({ data, profile }: RefundProps) {
   const total = data.reduce((s, d) => s + d.amount, 0)
+  const cur = profile.currency
   return (
-    <Card title="退款 / 取消归集（不计入收入确认）" style={{ marginBottom: 16 }}>
+    <Card title={profile.freeRefundDef.refundTitle} style={{ marginBottom: 16 }}>
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col span={6}><Statistic title="退款(status=8)" value={data.filter((d) => d.status === 8).length} suffix="笔" /></Col>
-        <Col span={6}><Statistic title="取消(status=7)" value={data.filter((d) => d.status === 7).length} suffix="笔" /></Col>
-        <Col span={6}><Statistic title="归集金额" value={fmtVNDFull(total)} /></Col>
+        <Col span={6}><Statistic title={`退款(status=${profile.freeRefundDef.refundStatus.join('/')})`} value={data.filter((d) => profile.freeRefundDef.refundStatus.includes(d.status)).length} suffix="笔" /></Col>
+        <Col span={6}><Statistic title={`取消(status=${profile.freeRefundDef.cancelStatus.join('/')})`} value={data.filter((d) => profile.freeRefundDef.cancelStatus.includes(d.status)).length} suffix="笔" /></Col>
+        <Col span={6}><Statistic title="归集金额" value={cur.full(total)} /></Col>
         <Col span={6}><Statistic title="R1/R2 风险单" value={data.filter((d) => d.root !== 'NORMAL').length} suffix="笔" valueStyle={{ color: '#d97706' }} /></Col>
       </Row>
       <Table
@@ -67,9 +74,11 @@ export function Refunds({ data }: { data: RefundItem[] }) {
           { title: '门店', dataIndex: 'storeNo', width: 80 },
           {
             title: '类型', dataIndex: 'statusLabel', width: 70,
-            render: (v, r) => <Tag color={r.status === 8 ? 'magenta' : 'gold'}>{v}</Tag>,
+            render: (v, r) => (
+              <Tag color={profile.freeRefundDef.refundStatus.includes(r.status) ? 'magenta' : 'gold'}>{v}</Tag>
+            ),
           },
-          { title: '金额', dataIndex: 'amount', align: 'right', render: (v) => <span className="stat-number">{fmtVNDFull(v)}</span> },
+          { title: '金额', dataIndex: 'amount', align: 'right', render: (v) => <span className="stat-number">{cur.full(v)}</span> },
           { title: '时间', dataIndex: 'time', width: 130 },
           {
             title: '分类', dataIndex: 'rootLabel', width: 220,

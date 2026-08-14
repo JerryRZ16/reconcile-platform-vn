@@ -3,17 +3,23 @@ import {
   ShoppingCartOutlined, WalletOutlined, AimOutlined, WarningOutlined,
   CheckCircleOutlined, ExclamationCircleOutlined,
 } from '@ant-design/icons'
-import { fmtVND } from '../../data/mockData'
 import type { ReconSummary } from '../../data/mockData'
+import type { CountryProfile } from '../../profiles'
 
-export default function MetricCards({ summary }: { summary: ReconSummary }) {
+interface Props {
+  summary: ReconSummary;
+  profile: CountryProfile;
+}
+
+export default function MetricCards({ summary, profile }: Props) {
+  const cur = profile.currency
   const cards = [
     {
       title: '总订单笔数', value: summary.totalOrders.toLocaleString(), suffix: '笔',
       icon: <ShoppingCartOutlined />, color: '#1d4ed8', bg: '#eef2ff',
     },
     {
-      title: '总金额', value: fmtVND(summary.totalAmount), suffix: 'VND',
+      title: '总金额', value: cur.short(summary.totalAmount), suffix: cur.code,
       icon: <WalletOutlined />, color: '#059669', bg: '#ecfdf5',
     },
     {
@@ -26,7 +32,7 @@ export default function MetricCards({ summary }: { summary: ReconSummary }) {
       icon: <ExclamationCircleOutlined />, color: '#d97706', bg: '#fffbeb',
     },
     {
-      title: '差异金额', value: fmtVND(summary.diffAmount), suffix: 'VND',
+      title: '差异金额', value: cur.short(summary.diffAmount), suffix: cur.code,
       icon: <WarningOutlined />, color: '#dc2626', bg: '#fef2f2',
     },
     {

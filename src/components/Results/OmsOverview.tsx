@@ -1,8 +1,8 @@
 import { Card, Table, Tabs, Progress } from 'antd'
-import { fmtVND } from '../../data/mockData'
 import type { DimRow } from '../../data/mockData'
+import type { CountryProfile } from '../../profiles'
 
-function DimTable({ rows, title }: { rows: DimRow[]; title: string }) {
+function DimTable({ rows, title, profile }: { rows: DimRow[]; title: string; profile: CountryProfile }) {
   const max = Math.max(...rows.map((r) => r.cnt))
   return (
     <Table
@@ -32,25 +32,28 @@ function DimTable({ rows, title }: { rows: DimRow[]; title: string }) {
           ),
         },
         {
-          title: '金额 (VND)', dataIndex: 'amt', align: 'right',
-          render: (v) => <span className="stat-number">{fmtVND(v)}</span>,
+          title: `金额 (${profile.currency.code})`, dataIndex: 'amt', align: 'right',
+          render: (v) => <span className="stat-number">{profile.currency.short(v)}</span>,
         },
       ]}
     />
   )
 }
 
-export default function OmsOverview({ data }: {
-  data: { byBusiness: DimRow[]; bySource: DimRow[]; byPayType: DimRow[]; byStatus: DimRow[] }
-}) {
+interface Props {
+  data: { byBusiness: DimRow[]; bySource: DimRow[]; byPayType: DimRow[]; byStatus: DimRow[] };
+  profile: CountryProfile;
+}
+
+export default function OmsOverview({ data, profile }: Props) {
   return (
     <Card title="OMS 四维总览" style={{ marginBottom: 16 }}>
       <Tabs
         items={[
-          { key: 'bt', label: 'business_type 业务类型', children: <DimTable rows={data.byBusiness} title="按业务类型" /> },
-          { key: 'os', label: 'order_source 订单来源', children: <DimTable rows={data.bySource} title="按订单来源" /> },
-          { key: 'pt', label: 'pay_type 支付方式', children: <DimTable rows={data.byPayType} title="按支付方式" /> },
-          { key: 'st', label: 'order_status 订单状态', children: <DimTable rows={data.byStatus} title="按订单状态" /> },
+          { key: 'bt', label: 'business_type 业务类型', children: <DimTable rows={data.byBusiness} title="按业务类型" profile={profile} /> },
+          { key: 'os', label: 'order_source 订单来源', children: <DimTable rows={data.bySource} title="按订单来源" profile={profile} /> },
+          { key: 'pt', label: 'pay_type 支付方式', children: <DimTable rows={data.byPayType} title="按支付方式" profile={profile} /> },
+          { key: 'st', label: 'order_status 订单状态', children: <DimTable rows={data.byStatus} title="按订单状态" profile={profile} /> },
         ]}
       />
     </Card>

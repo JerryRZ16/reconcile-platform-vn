@@ -1,32 +1,44 @@
 import { useEffect, useState } from 'react'
-import { Card, Steps, Alert, Typography, Result, Button } from 'antd'
-import { CheckCircleOutlined, LoadingOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import {
+  Card, Steps, Alert, Typography, Result, Button, Space, Badge, Progress,
+} from 'antd'
+import {
+  CheckCircleOutlined, LoadingOutlined, ThunderboltOutlined,
+  ReloadOutlined, CloseCircleOutlined, ExperimentOutlined,
+  CloudServerOutlined, DatabaseOutlined,
+} from '@ant-design/icons'
+import type { CountryProfile } from '../profiles'
+import type { TaskStatus } from '../lib/reconcileClient'
 
 const { Text } = Typography
-
-const RULES = [
-  { key: 'r1', name: 'OMS 四维总览', desc: 'business_type / order_source / pay_type / order_status 笔数金额统计' },
-  { key: 'r2', name: 'L1 · ONLINE 通道', desc: 'order_source 9/10 ↔ PAYOO ONLINE 按 order_no 逐笔匹配' },
-  { key: 'r3', name: 'L1 · INSTORE 通道', desc: 'order_source=4 且 pay_type 4/45/46 ↔ 店+额+时±5min 三元组匹配' },
-  { key: 'r4', name: 'L1 · 现金通道', desc: 'pay_type=98 门店聚合 ↔ TCB 缴存流水核对' },
-  { key: 'r5', name: 'L2 · 银行对账', desc: 'PAYOO 结算 ↔ TCB 流水按日对平 + T+N 跨月分解' },
-  { key: 'r6', name: '免单 / 退款 / 全覆盖', desc: 'pay_type=500 验证 · status 7/8 归集 · order_source×pay_type 全覆盖检查' },
-]
 
 interface Props {
   running: boolean;
   error: string | null;
+  profile: CountryProfile;
+  /** 真实任务进度（后端轮询 / 演示模式模拟），null 表示未开始 */
+  taskStatus?: TaskStatus | null;
+  /** 当前数据模式：live=真实对账 / demo=演示数据 */
+  mode?: 'live' | 'demo' | null;
+  /** 点击「重试」：回到映射步骤重新发起 */
+  onRetry?: () => void;
+  /** 点击「返回映射」：中止当前任务回到映射 */
+  onBackToMapping?: () => void;
 }
 
-export default function StepRunning({ running, error }: Props) {
+export default function StepRunning({
+  running, error, profile, taskStatus, mode, onRetry, onBackToMapping,
+}: Props) {
+  const rules = profile.rules
   const [step, setStep] = useState(0)
 
+  // 演示模式：无真实任务进度时，按 700ms/规则 模拟推进（保持阶段1/2 体验）
   useEffect(() => {
-    if (!running) return
+    if (!running || mode === 'live') return
     setStep(0)
     const timer = setInterval(() => {
       setStep((s) => {
-        if (s >= RULES.length - 1) {
+        if (s >= rules.length - 1) {
           clearInterval(timer)
           return s
         }
@@ -34,59 +46,108 @@ export default function StepRunning({ running, error }: Props) {
       })
     }, 700)
     return () => clearInterval(timer)
-  }, [running])
+  }, [running, mode, rules.length])
 
-  if (error) {
+  // 失败态：展示后端错误 + 重试/返回映射
+  if (error && !running) {
     return (
       <Card>
         <Result
           status="error"
-          title="规则引擎执行失败"
+          title="对账执行失败"
           subTitle={error}
-          extra={<Button type="primary">重试</Button>}
+          extra={
+            <Space>
+              <Button type="primary" icon={<ReloadOutlined />} onClick={onRetry}>重试</Button>
+              <Button icon={<CloseCircleOutlined />} onClick={onBackToMapping}>返回字段映射</Button>
+            </Space>
+          }
         />
       </Card>
     )
   }
 
-  const done = step >= RULES.length - 1
-  const pct = Math.round(((step + (done ? 1 : 0)) / RULES.length) * 100)
+  // 真实轮询进度：来自后端 taskStatus
+  const liveProgress = mode === 'live' && taskStatus
+    ? Math.max(5, Math.min(100, Number(taskStatus.progress) || 0))
+    : 0
+  const liveMsg = taskStatus?.message || '后端引擎执行中…'
+
+  const done = mode === 'live'
+    ? liveProgress >= 100
+    : step >= rules.length - 1
+  const pct = mode === 'live'
+    ? Math.round(liveProgress)
+    : Math.round(((step + (done ? 1 : 0)) / rules.length) * 100)
 
   return (
     <div className="fade-up">
       <Card>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <ThunderboltOutlined style={{ color: '#1d4ed8', fontSize: 20 }} />
-          <div>
-            <Typography.Title level={5} style={{ margin: 0 }}>规则引擎执行中</Typography.Title>
-            <Text type="secondary">已加载越南 2026-07 数据：OMS 126,623 笔 · PAYOO / TCB 账单文件 3 份</Text>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
+          <ThunderboltOutlined style={{ color: '#1d4ed8', fontSize: 20, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>对账执行中</Typography.Title>
+              <Badge
+                status={mode === 'live' ? 'processing' : 'default'}
+                text={
+                  mode === 'live'
+                    ? <Text type="success"><CloudServerOutlined /> 真实对账（后端引擎）</Text>
+                    : <Text type="secondary"><ExperimentOutlined /> 演示数据（未上传文件 / 后端不可达）</Text>
+                }
+              />
+            </div>
+            <Text type="secondary">
+              {mode === 'live'
+                ? `后端任务 ${taskStatus?.id ? `#${taskStatus.id}` : ''} · ${liveMsg}`
+                : profile.ui.runningSubtitle}
+            </Text>
           </div>
         </div>
 
-        <Steps
-          direction="vertical"
-          size="small"
-          current={step}
-          items={RULES.map((r) => ({
-            title: r.name,
-            description: r.desc,
-            status: step > RULES.findIndex((x) => x.key === r.key)
-              ? 'finish'
-              : step === RULES.findIndex((x) => x.key === r.key)
-                ? 'process'
-                : 'wait',
-          }))}
-        />
+        {/* 真实模式：展示后端进度条 */}
+        {mode === 'live' ? (
+          <div style={{ marginBottom: 20 }}>
+            <Progress
+              percent={pct}
+              status={done ? 'success' : 'active'}
+              strokeColor={{ from: '#1d4ed8', to: '#7c3aed' }}
+              format={(p) => <span style={{ fontWeight: 700 }}>{p}%</span>}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {liveMsg}（轮询后端任务状态，间隔约 1.2s）
+            </Text>
+          </div>
+        ) : (
+          <Steps
+            direction="vertical"
+            size="small"
+            current={step}
+            items={rules.map((r) => ({
+              title: r.name,
+              description: r.desc,
+              status: step > rules.findIndex((x) => x.key === r.key)
+                ? 'finish'
+                : step === rules.findIndex((x) => x.key === r.key)
+                  ? 'process'
+                  : 'wait',
+            }))}
+          />
+        )}
 
         <div style={{ marginTop: 24 }}>
           <Alert
             type={done ? 'success' : 'info'}
             showIcon
-            icon={done ? <CheckCircleOutlined /> : <LoadingOutlined />}
+            icon={done ? <CheckCircleOutlined /> : mode === 'live' ? <DatabaseOutlined /> : <LoadingOutlined />}
             message={
               done
-                ? `完成！6 条规则全部执行成功（${pct}%）`
-                : `正在执行第 ${step + 1} / ${RULES.length} 条规则：${RULES[step].name}（${pct}%）`
+                ? mode === 'live'
+                  ? `完成！后端对账任务执行成功（${pct}%），即将展示结果`
+                  : `完成！${rules.length} 条规则全部执行成功（${pct}%）`
+                : mode === 'live'
+                  ? `后端任务进行中：${liveMsg}（${pct}%）`
+                  : `正在执行第 ${step + 1} / ${rules.length} 条规则：${rules[step].name}（${pct}%）`
             }
           />
         </div>

@@ -1,10 +1,15 @@
 import { Row, Col, Card, Progress, Descriptions, Tag } from 'antd'
-import { fmtVND } from '../../data/mockData'
 import type { ChannelRecon } from '../../data/mockData'
+import type { CountryProfile } from '../../profiles'
 
-export default function ChannelCards({ channels }: { channels: ChannelRecon[] }) {
+interface Props {
+  channels: ChannelRecon[];
+  profile: CountryProfile;
+}
+
+export default function ChannelCards({ channels, profile }: Props) {
   return (
-    <Card title="L1 三通道对账结果（OMS ↔ PAYOO）" style={{ marginBottom: 16 }}>
+    <Card title={`L1 通道对账结果（OMS ↔ ${profile.bankDef.settleParty}）`} style={{ marginBottom: 16 }}>
       <Row gutter={[16, 16]}>
         {channels.map((c) => {
           const color = c.status === 'success' ? '#059669' : c.status === 'warning' ? '#d97706' : '#dc2626'
@@ -35,7 +40,7 @@ export default function ChannelCards({ channels }: { channels: ChannelRecon[] })
                     { key: 'oms', label: 'OMS 侧', children: <span className="stat-number">{c.omsCount.toLocaleString()} 笔</span> },
                     { key: 'bill', label: '账单侧', children: <span className="stat-number">{c.billCount.toLocaleString()} 笔</span> },
                     { key: 'matched', label: '已匹配', children: <span className="stat-number" style={{ color: '#059669' }}>{c.matchedCount.toLocaleString()} 笔</span> },
-                    { key: 'unmatched', label: '未匹配', children: <span className="stat-number" style={{ color: '#d97706' }}>{c.unmatchedCount.toLocaleString()} 笔 · {fmtVND(c.unmatchedAmt)}</span> },
+                    { key: 'unmatched', label: '未匹配', children: <span className="stat-number" style={{ color: '#d97706' }}>{c.unmatchedCount.toLocaleString()} 笔 · {profile.currency.short(c.unmatchedAmt)}</span> },
                   ]}
                 />
                 <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280', background: '#f9fafb', padding: 8, borderRadius: 6 }}>
