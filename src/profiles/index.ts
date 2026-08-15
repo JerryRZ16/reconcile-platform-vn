@@ -7,6 +7,8 @@ import type { CountryProfile } from './types'
 import { vnProfile } from './vn'
 import { thProfile } from './th'
 import { myProfile } from './my'
+import { idProfile } from './id'
+import { phProfile } from './ph'
 
 export type { CountryProfile }
 export type {
@@ -15,8 +17,8 @@ export type {
   MappingTemplate, MappingRow, ProfileUi,
 } from './types'
 
-/** 当前可用国家（越南 + 泰国 + 马来西亚；后续国家按配置文件扩展） */
-export const countries: CountryProfile[] = [vnProfile, thProfile, myProfile]
+/** 当前可用国家（越南 + 泰国 + 马来 + 印尼 + 菲律宾；后续国家按配置文件扩展） */
+export const countries: CountryProfile[] = [vnProfile, thProfile, myProfile, idProfile, phProfile]
 
 export const defaultCountryId = 'vn'
 
