@@ -26,7 +26,7 @@
 import type { CountryProfile, MappingRow } from '../profiles/types'
 
 /** 上传文件集合：槽位 key → File */
-export type SlotFiles = Record<string, File | null>
+export type SlotFiles = Record<string, File[] | null>
 
 /** 映射模板（StepMapping 的 mappings 状态）——用于序列化提交后端 */
 export interface MappingTemplateState {
@@ -239,8 +239,13 @@ export function buildFormData(
     fd.append('mapping', JSON.stringify(mappingPayload))
   }
 
-  for (const [key, file] of Object.entries(files)) {
-    if (file) fd.append(key, file, file.name)
+  for (const [key, filesArr] of Object.entries(files)) {
+    if (!filesArr || filesArr.length === 0) continue
+    // 同槽位多文件（增量追加）：用 {key}_files 字段名，FormData 同名 key 多次 append
+    // （与后端 reconcile_upload 的 oms_files 等 List[UploadFile] 参数对齐）
+    for (const file of filesArr) {
+      fd.append(`${key}_files`, file, file.name)
+    }
   }
   return fd
 }

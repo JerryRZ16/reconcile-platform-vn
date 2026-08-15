@@ -110,10 +110,12 @@ export default function App() {
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    // 组装上传文件集合（槽位 key → File；多文件增量时取首文件，后端真实链路当前按单文件契约）
-    const uploadFiles: Record<string, File | null> = {}
+    // 组装上传文件集合（槽位 key → File[]，增量追加传全部文件；后端多文件参数 {key}_files）
+    const uploadFiles: Record<string, File[]> = {}
     for (const [key, f] of Object.entries(files)) {
-      uploadFiles[key] = (f && f.length > 0 ? f[0].file : null) || null
+      if (f && f.length > 0) {
+        uploadFiles[key] = f.map((sf) => sf.file).filter((x): x is File => Boolean(x))
+      }
     }
 
     const outcome: RunOutcome = await runReconciliation(profile, {

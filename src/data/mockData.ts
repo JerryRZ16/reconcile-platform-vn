@@ -178,7 +178,9 @@ export async function runReconciliation(
   opts: RunOptions = {},
 ): Promise<RunOutcome> {
   const { files, mapping, onProgress, signal } = opts
-  const hasRealFiles = Boolean(files && Object.values(files).some(Boolean))
+  const hasRealFiles = Boolean(
+    files && Object.values(files).some((arr) => Array.isArray(arr) && arr.length > 0),
+  )
 
   // ---- 无真实文件 → 演示模式（保持阶段1/2 的一键演示体验） ----
   if (!hasRealFiles) {

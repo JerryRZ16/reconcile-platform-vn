@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
-import { Card, Row, Col, Upload, Typography, Alert, Tag, List, Button, Tooltip, Collapse, Divider } from 'antd'
+import { useMemo, useRef, useState } from 'react'
+import { Card, Row, Col, Upload, Typography, Alert, Tag, List, Button, Tooltip, Collapse, Divider, Popconfirm } from 'antd'
 import {
   FileExcelOutlined, FileTextOutlined, CheckCircleOutlined,
-  UploadOutlined, DeleteOutlined, InfoCircleOutlined, FileSearchOutlined,
+  UploadOutlined, DeleteOutlined, InfoCircleOutlined, FileSearchOutlined, SwapOutlined,
 } from '@ant-design/icons'
 import type { UploadFile } from 'antd'
 import type { CountryProfile, UploadSlot } from '../profiles'
@@ -35,9 +35,28 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [uploadList, setUploadList] = useState<Record<string, UploadFile[]>>({})
   const [parsing, setParsing] = useState<Record<string, boolean>>({})
+  // 替换用的隐藏 file input：记录「槽位+索引」，选中文件后触发 replaceFileAt
+  const replaceRef = useRef<{ key: string; index: number } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const parsed = parsedFiles
   const slots = profile.slots
   const hints = profile.uploadHints
+
+  const openReplacePicker = (key: string, index: number) => {
+    replaceRef.current = { key, index }
+    fileInputRef.current?.click()
+  }
+
+  const onReplaceInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const target = e.target.files?.[0]
+    const info = replaceRef.current
+    if (target && info) {
+      void replaceFileAt(info.key, info.index, target)
+    }
+    replaceRef.current = null
+    // 重置 input 使同一文件可再次选择
+    e.target.value = ''
+  }
 
   const filledCount = useMemo(
     () => Object.values(files).filter((f) => f && f.length > 0).length,
@@ -92,13 +111,73 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
     setErrors((p) => { const n = { ...p }; delete n[key]; return n })
   }
 
-  /** 移除槽位中某个文件（多文件增量追加的单个移除） */
+  /** 重新解析某槽位所有文件的表头，重建合并 ParsedSheet（用于移除/替换后同步） */
+  const recomputeParsed = async (key: string, filesArr: SlotFile[]) => {
+    if (!filesArr.length) {
+      setParsedFiles((p) => ({ ...p, [key]: null }))
+      return
+    }
+    setParsing((p) => ({ ...p, [key]: true }))
+    try {
+      const sheets: ParsedSheet[] = []
+      for (const sf of filesArr) {
+        if (!sf.file) continue
+        const s = await parseFile(sf.file)
+        if (!s.error) sheets.push(s)
+      }
+      if (!sheets.length) {
+        setParsedFiles((p) => ({ ...p, [key]: null }))
+        return
+      }
+      const merged: ParsedSheet = {
+        file: filesArr.map((f) => f.name).join(', '),
+        ext: sheets[0].ext,
+        columns: Array.from(new Set(sheets.flatMap((s) => s.columns))),
+        sampleRows: sheets.flatMap((s) => s.sampleRows).slice(0, 12),
+        rowCount: sheets.reduce((sum, s) => sum + s.rowCount, 0),
+        source: sheets.some((s) => s.source === 'papaparse') ? 'papaparse'
+          : sheets.some((s) => s.source === 'xlsx') ? 'xlsx'
+          : sheets[0].source,
+      }
+      setParsedFiles((p) => ({ ...p, [key]: merged }))
+    } catch {
+      setParsedFiles((p) => ({ ...p, [key]: null }))
+    } finally {
+      setParsing((p) => ({ ...p, [key]: false }))
+    }
+  }
+
+  /** 移除槽位中某个文件（多文件增量追加的单个移除），同步重算表头解析 */
   const removeFileAt = (key: string, index: number) => {
+    let next: SlotFile[] | null = null
     setFiles((p) => {
       const arr = (p[key] || []).filter((_, i) => i !== index)
-      return { ...p, [key]: arr.length ? arr : null }
+      next = arr.length ? arr : null
+      return { ...p, [key]: next }
     })
+    // 移除后同步重建该槽位合并表头（修复旧解析残留 bug）
+    if (next) recomputeParsed(key, next)
+    else setParsedFiles((p) => ({ ...p, [key]: null }))
     setErrors((p) => { const n = { ...p }; delete n[key]; return n })
+  }
+
+  /** 替换槽位中某个文件：新文件覆盖旧文件（一步到位），同步重建表头解析 */
+  const replaceFileAt = async (key: string, index: number, file: File) => {
+    const slot = slots.find((s) => s.key === key)
+    const err = validateFile(file, slot ? (hints[key] || []) : undefined)
+    if (err) {
+      setErrors((p) => ({ ...p, [key]: err }))
+      return
+    }
+    setErrors((p) => { const n = { ...p }; delete n[key]; return n })
+    const newSlotFile: SlotFile = { name: file.name, size: file.size, file }
+    let next: SlotFile[] | null = null
+    setFiles((p) => {
+      const arr = (p[key] || []).map((sf, i) => (i === index ? newSlotFile : sf))
+      next = arr.length ? arr : null
+      return { ...p, [key]: next }
+    })
+    if (next) recomputeParsed(key, next)
   }
 
   return (
@@ -195,34 +274,66 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
                         {files[slot.key]!.map((f, i) => (
                           <div key={f.name + i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 2 }}>
                             <FileTextOutlined style={{ color: '#9ca3af' }} />
-                            <Text ellipsis style={{ maxWidth: 220, fontSize: 12 }}>{f.name}</Text>
+                            <Text ellipsis style={{ maxWidth: 150, fontSize: 12 }}>{f.name}</Text>
                             <Text type="secondary" style={{ fontSize: 11 }}>{(f.size / 1024).toFixed(0)}KB</Text>
                             <Button
-                              size="small" type="text" danger icon={<DeleteOutlined />}
-                              style={{ fontSize: 11, height: 18, padding: 0 }}
+                              size="small" type="text" icon={<SwapOutlined />}
+                              title="替换此文件"
+                              style={{ fontSize: 11, height: 18, padding: 0, color: '#1d4ed8' }}
                               onClick={(e) => {
                                 e.stopPropagation()
+                                openReplacePicker(slot.key, i)
+                              }}
+                            >
+                              替换
+                            </Button>
+                            <Popconfirm
+                              title="移除这个文件？"
+                              description={`将删除 ${f.name}（共 ${files[slot.key]!.length - 1} 个剩余），不影响其他文件。`}
+                              okText="移除"
+                              cancelText="取消"
+                              okButtonProps={{ danger: true }}
+                              onConfirm={(e) => {
+                                e?.stopPropagation()
                                 removeFileAt(slot.key, i)
                               }}
                             >
-                              移除
-                            </Button>
+                              <Button
+                                size="small" type="text" danger icon={<DeleteOutlined />}
+                                style={{ fontSize: 11, height: 18, padding: 0 }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                移除
+                              </Button>
+                            </Popconfirm>
                           </div>
                         ))}
                       </div>
                       <div style={{ marginTop: 6 }}>
                         <Button size="small" icon={<UploadOutlined />}>继续追加</Button>
-                        <Button
-                          size="small" danger icon={<DeleteOutlined />}
-                          onClick={(e) => {
-                            e.stopPropagation()
+                        <Popconfirm
+                          title="清空整个槽位？"
+                          description={`将删除本槽位全部 ${files[slot.key]!.length} 个文件，需重新上传。`}
+                          okText="清空"
+                          cancelText="取消"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={(e) => {
+                            e?.stopPropagation()
                             clearSlot(slot.key)
                           }}
-                          style={{ marginLeft: 8 }}
                         >
-                          清空槽位
-                        </Button>
+                          <Button
+                            size="small" danger icon={<DeleteOutlined />}
+                            style={{ marginLeft: 8 }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            清空槽位
+                          </Button>
+                        </Popconfirm>
                       </div>
+                      <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 11 }}>
+                        传错文件？点对应文件的「替换」直接覆盖，或「移除」后重新追加；整槽错点「清空槽位」。
+                      </Text>
                     </div>
                   ) : (
                     <div style={{ padding: '12px 0' }}>
@@ -311,6 +422,15 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
           </Tooltip>
         </div>
       </Card>
+
+      {/* 替换文件用的隐藏 input（避开 Dragger 的追加语义，独立触发替换） */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={onReplaceInputChange}
+      />
     </div>
   )
 }
