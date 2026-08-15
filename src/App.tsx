@@ -55,7 +55,7 @@ export default function App() {
   const [stage, setStage] = useState<Stage>('upload')
   const [current, setCurrent] = useState(0)
   const [taskSeq, setTaskSeq] = useState(session.seq)
-  const [files, setFiles] = useState<Record<string, SlotFile | null>>({})
+  const [files, setFiles] = useState<Record<string, SlotFile[] | null>>({})
   const [parsedFiles, setParsedFiles] = useState<Record<string, ParsedSheet | null>>({})
   const [mappings, setMappings] = useState<MappingTemplate[] | null>(null)
   const [running, setRunning] = useState(false)
@@ -110,10 +110,10 @@ export default function App() {
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    // 组装上传文件集合（槽位 key → File）
+    // 组装上传文件集合（槽位 key → File；多文件增量时取首文件，后端真实链路当前按单文件契约）
     const uploadFiles: Record<string, File | null> = {}
     for (const [key, f] of Object.entries(files)) {
-      uploadFiles[key] = f?.file || null
+      uploadFiles[key] = (f && f.length > 0 ? f[0].file : null) || null
     }
 
     const outcome: RunOutcome = await runReconciliation(profile, {

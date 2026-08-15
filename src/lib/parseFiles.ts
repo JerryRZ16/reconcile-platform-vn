@@ -19,7 +19,7 @@ export interface ParsedSheet {
 }
 
 export const MAX_SAMPLE_ROWS = 5   // 样例预览行数
-export const MAX_FILE_SIZE = 50 * 1024 * 1024  // ≤50MB
+export const MAX_FILE_SIZE = 200 * 1024 * 1024  // ≤200MB（分片/增量追加后单文件上限）
 
 /**
  * 可选依赖的动态导入：用 new Function 间接构造 import 表达式，
@@ -203,7 +203,7 @@ export function validateFile(file: File, slotHint?: string[]): string {
   const name = file.name
   const lower = name.toLowerCase()
   if (!/\.(csv|xlsx?)$/.test(lower)) return '仅支持 CSV / Excel 文件'
-  if (file.size > MAX_FILE_SIZE) return `文件超过 50MB 限制（当前 ${(file.size / 1024 / 1024).toFixed(1)}MB）`
+  if (file.size > MAX_FILE_SIZE) return `文件超过 200MB 限制（当前 ${(file.size / 1024 / 1024).toFixed(1)}MB）`
   if (slotHint && slotHint.length) {
     const ok = slotHint.some((h) => lower.includes(h.toLowerCase()))
     if (!ok) return `文件名似乎与目标槽位不匹配（提示：需包含 ${slotHint.join(' / ')}）`

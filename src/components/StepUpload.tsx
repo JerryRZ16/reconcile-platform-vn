@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, Row, Col, Upload, Typography, Alert, Tag, List, Button, Tooltip } from 'antd'
+import { Card, Row, Col, Upload, Typography, Alert, Tag, List, Button, Tooltip, Collapse, Divider } from 'antd'
 import {
   FileExcelOutlined, FileTextOutlined, CheckCircleOutlined,
   UploadOutlined, DeleteOutlined, InfoCircleOutlined, FileSearchOutlined,
@@ -17,9 +17,9 @@ export interface SlotFile {
   file?: File | null;
 }
 
-interface Props {
-  files: Record<string, SlotFile | null>;
-  setFiles: React.Dispatch<React.SetStateAction<Record<string, SlotFile | null>>>;
+export interface Props {
+  files: Record<string, SlotFile[] | null>;
+  setFiles: React.Dispatch<React.SetStateAction<Record<string, SlotFile[] | null>>>;
   profile: CountryProfile;
   /** 表头解析结果（槽位 key → ParsedSheet），提升到 App 供 StepMapping 消费 */
   parsedFiles: Record<string, ParsedSheet | null>;
@@ -40,7 +40,7 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
   const hints = profile.uploadHints
 
   const filledCount = useMemo(
-    () => Object.values(files).filter(Boolean).length,
+    () => Object.values(files).filter((f) => f && f.length > 0).length,
     [files],
   )
 
@@ -49,24 +49,35 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
     const err = validateFile(file, slot ? (hints[key] || []) : undefined)
     if (err) {
       setErrors((p) => ({ ...p, [key]: err }))
-      setParsedFiles((p) => ({ ...p, [key]: null }))
       return false
     }
     setErrors((p) => { const n = { ...p }; delete n[key]; return n })
-    setFiles((p) => ({ ...p, [key]: { name: file.name, size: file.size, file } }))
+    // 增量追加：同槽位多文件累加（保留历史文件，新文件追加）
+    const newSlotFile: SlotFile = { name: file.name, size: file.size, file }
+    setFiles((p) => ({ ...p, [key]: [...(p[key] || []), newSlotFile] }))
 
     // 真实文件解析：表头 + 前 5 行样例（papaparse / xlsx 可选依赖，未安装则降级）
     setParsing((p) => ({ ...p, [key]: true }))
     try {
       const sheet = await parseFile(file)
-      setParsedFiles((p) => ({ ...p, [key]: sheet }))
+      // 合并解析：多文件时列 = 各文件表头并集，样例取各文件前几行
+      setParsedFiles((p) => {
+        const prev = p[key]
+        if (!prev) return { ...p, [key]: sheet }
+        const merged: ParsedSheet = {
+          ...sheet,
+          columns: Array.from(new Set([...prev.columns, ...sheet.columns])),
+          sampleRows: [...prev.sampleRows, ...sheet.sampleRows].slice(0, 12),
+          rowCount: prev.rowCount + sheet.rowCount,
+        }
+        return { ...p, [key]: merged }
+      })
       if (sheet.error) {
         setErrors((p) => ({ ...p, [key]: sheet.error! }))
       } else {
         setErrors((p) => { const n = { ...p }; delete n[key]; return n })
       }
     } catch (e) {
-      setParsedFiles((p) => ({ ...p, [key]: null }))
       setErrors((p) => ({ ...p, [key]: '文件解析失败：' + (e as Error).message }))
     } finally {
       setParsing((p) => ({ ...p, [key]: false }))
@@ -78,6 +89,15 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
     setFiles((p) => ({ ...p, [key]: null }))
     setUploadList((p) => ({ ...p, [key]: [] }))
     setParsedFiles((p) => ({ ...p, [key]: null }))
+    setErrors((p) => { const n = { ...p }; delete n[key]; return n })
+  }
+
+  /** 移除槽位中某个文件（多文件增量追加的单个移除） */
+  const removeFileAt = (key: string, index: number) => {
+    setFiles((p) => {
+      const arr = (p[key] || []).filter((_, i) => i !== index)
+      return { ...p, [key]: arr.length ? arr : null }
+    })
     setErrors((p) => { const n = { ...p }; delete n[key]; return n })
   }
 
@@ -95,6 +115,45 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
         </div>
       </Card>
 
+      {/* 精简字段导出指南：大文件处理提示（方案A） */}
+      <Card size="small" style={{ marginBottom: 16, background: '#fffbeb', borderColor: '#fde68a' }}>
+        <Collapse ghost bordered={false} expandIconPosition="end">
+          <Collapse.Panel
+            header={
+              <span>
+                <FileSearchOutlined style={{ color: '#b45309', marginRight: 8 }} />
+                <Text strong>大文件处理指南（单文件 ≤200MB）· 点击展开</Text>
+              </span>
+            }
+            key="guide"
+          >
+            <div style={{ padding: '4px 8px 8px', color: '#374151', fontSize: 13, lineHeight: 1.8 }}>
+              <Text strong>▍为什么有大文件限制？</Text>
+              <br />
+              对账只需必要字段，浏览器/服务器解析大文件会占大量内存。导出时<b>只保留对账必需列</b>，可大幅缩小文件体积。
+              <Divider style={{ margin: '8px 0' }} />
+              <Text strong>▍按槽位只导出这些字段</Text>
+              <div style={{ marginTop: 6 }}>
+                {slots.map((slot) => (
+                  <div key={slot.key} style={{ marginBottom: 4 }}>
+                    <Tag color={slot.color} style={{ marginInlineEnd: 6 }}>{slot.title}</Tag>
+                    <Text code style={{ fontSize: 12 }}>{slot.fields}</Text>
+                  </div>
+                ))}
+              </div>
+              <Divider style={{ margin: '8px 0' }} />
+              <Text strong>▍超 200MB 或文件很多？用「增量追加」</Text>
+              <br />
+              同一槽位支持<b>多次上传自动累加</b>（如 OMS 按支付方式/按周拆成 2-4 个文件，Curlec 的 Purchase 与 Top Up 分开传），平台合并后统一对账，结果等价于一次全量。
+              <Divider style={{ margin: '8px 0' }} />
+              <Text strong>▍演示模式</Text>
+              <br />
+              未上传文件时，平台使用内置演示数据（每国基于真实对账比例），可直接继续体验全流程。
+            </div>
+          </Collapse.Panel>
+        </Collapse>
+      </Card>
+
       <Row gutter={[16, 16]}>
         {slots.map((slot) => {
           const sheet = parsed[slot.key]
@@ -110,12 +169,12 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
                     {slot.required && <Tag color="red" style={{ marginLeft: 8 }}>必填</Tag>}
                   </span>
                 }
-                extra={files[slot.key] ? <CheckCircleOutlined style={{ color: '#059669' }} /> : undefined}
+                extra={files[slot.key] && files[slot.key]!.length > 0 ? <CheckCircleOutlined style={{ color: '#059669' }} /> : undefined}
                 style={{ height: '100%' }}
               >
                 <Upload.Dragger
                   accept=".csv,.xlsx,.xls"
-                  multiple={false}
+                  multiple
                   showUploadList={false}
                   beforeUpload={(file) => handleFile(slot.key, file)}
                   fileList={uploadList[slot.key] || []}
@@ -123,23 +182,45 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
                     setUploadList((p) => ({ ...p, [slot.key]: fileList }))
                   }
                 >
-                  {files[slot.key] ? (
+                  {files[slot.key] && files[slot.key]!.length > 0 ? (
                     <div style={{ padding: '8px 0' }}>
                       <CheckCircleOutlined style={{ fontSize: 28, color: '#059669' }} />
-                      <div style={{ marginTop: 8, fontWeight: 600 }}>{files[slot.key]!.name}</div>
+                      <div style={{ marginTop: 8, fontWeight: 600 }}>
+                        {files[slot.key]!.length} 个文件已上传（{files[slot.key]!.reduce((s, f) => s + f.size, 0) / 1024 / 1024 > 1 ? (files[slot.key]!.reduce((s, f) => s + f.size, 0) / 1024 / 1024).toFixed(1) + ' MB' : (files[slot.key]!.reduce((s, f) => s + f.size, 0) / 1024).toFixed(0) + ' KB'}）
+                      </div>
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        {(files[slot.key]!.size / 1024).toFixed(0)} KB · 已通过校验
-                        {parsingNow ? ' · 解析中…' : ''}
+                        {parsingNow ? ' · 解析中…' : ' · 可继续追加文件（增量累加）'}
                       </Text>
-                      <div style={{ marginTop: 8 }}>
+                      <div style={{ marginTop: 6, maxHeight: 96, overflowY: 'auto' }}>
+                        {files[slot.key]!.map((f, i) => (
+                          <div key={f.name + i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 2 }}>
+                            <FileTextOutlined style={{ color: '#9ca3af' }} />
+                            <Text ellipsis style={{ maxWidth: 220, fontSize: 12 }}>{f.name}</Text>
+                            <Text type="secondary" style={{ fontSize: 11 }}>{(f.size / 1024).toFixed(0)}KB</Text>
+                            <Button
+                              size="small" type="text" danger icon={<DeleteOutlined />}
+                              style={{ fontSize: 11, height: 18, padding: 0 }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                removeFileAt(slot.key, i)
+                              }}
+                            >
+                              移除
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 6 }}>
+                        <Button size="small" icon={<UploadOutlined />}>继续追加</Button>
                         <Button
                           size="small" danger icon={<DeleteOutlined />}
                           onClick={(e) => {
                             e.stopPropagation()
                             clearSlot(slot.key)
                           }}
+                          style={{ marginLeft: 8 }}
                         >
-                          替换
+                          清空槽位
                         </Button>
                       </div>
                     </div>
@@ -212,8 +293,8 @@ export default function StepUpload({ files, setFiles, profile, parsedFiles, setP
             <Text type="secondary">{filledCount} / {slots.length} 个文件已就绪</Text>
             <div style={{ marginTop: 4 }}>
               {Object.entries(files).map(([k, f]) => (
-                <Tag key={k} color={f ? 'green' : 'default'} style={{ marginTop: 4 }}>
-                  {slots.find((s) => s.key === k)!.title}: {f ? f.name : '未上传'}
+                <Tag key={k} color={f && f.length > 0 ? 'green' : 'default'} style={{ marginTop: 4 }}>
+                  {slots.find((s) => s.key === k)!.title}: {f && f.length > 0 ? `${f.length} 个文件` : '未上传'}
                 </Tag>
               ))}
             </div>

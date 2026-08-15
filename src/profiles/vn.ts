@@ -179,7 +179,7 @@ const mappingTemplates: CountryProfile['mappingTemplates'] = [
 
 // ---------- 界面文案（国家相关部分） ----------
 const ui: CountryProfile['ui'] = {
-  uploadIntro: '拖拽或点击上传文件（CSV / XLSX，≤50MB，UTF-8）。平台即时校验格式与文件名归属，校验通过后进入字段映射。',
+  uploadIntro: '拖拽或点击上传文件（CSV / XLSX，≤200MB，UTF-8）。平台即时校验格式与文件名归属，校验通过后进入字段映射。',
   uploadDemo: '演示模式已内置「越南 2026-07」真实数据，可直接继续。',
   uploadFlowHint: '① 上传 OMS 订单与 PAYOO/TCB 账单文件 → ② 确认字段映射 → ③ 运行对账规则 → ④ 查看可视化结果',
   runningSubtitle: '已加载越南 2026-07 数据：OMS 126,623 笔 · PAYOO / TCB 账单文件 3 份',

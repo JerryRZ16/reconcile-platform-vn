@@ -174,7 +174,7 @@ const mappingTemplates: CountryProfile['mappingTemplates'] = [
 
 // ---------- 界面文案 ----------
 const ui: CountryProfile['ui'] = {
-  uploadIntro: '拖拽或点击上传文件（CSV / XLSX，≤50MB，UTF-8）。平台即时校验格式与文件名归属，校验通过后进入字段映射。',
+  uploadIntro: '拖拽或点击上传文件（CSV / XLSX，≤200MB，UTF-8）。平台即时校验格式与文件名归属，校验通过后进入字段映射。',
   uploadDemo: '演示模式已内置「马来西亚 2026-06」真实比例示例数据，可直接继续。',
   uploadFlowHint: '① 上传 OMS 订单与 Curlec/平台/银行文件 → ② 确认字段映射 → ③ 运行对账规则 → ④ 查看可视化结果',
   runningSubtitle: '已加载马来西亚 2026-06 示例数据：OMS 1,512,021 笔 · Curlec / 平台 / Maybank 账单文件',
