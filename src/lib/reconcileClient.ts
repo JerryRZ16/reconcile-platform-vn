@@ -343,7 +343,7 @@ async function fetchResult(
   return (await res.json()) as unknown
 }
 
-/** 执行结果（模式 / 结果 / 错误信息） */
+/** 执行结果（模式 / 结果 / 错误信息 / 错误分类） */
 export interface ReconcileRunResult {
   ok: boolean
   aborted?: boolean
@@ -351,12 +351,15 @@ export interface ReconcileRunResult {
   result: unknown
   taskId?: string
   error?: string
+  /** 错误分类：network=后端不可达 / timeout=超时 / business=业务错误(4xx/422) / failed=任务执行失败 */
+  errorKind?: 'network' | 'timeout' | 'business' | 'failed'
 }
 
 /**
  * 执行「上传 → 轮询 → 取结果」全链路。
  * - 成功：{ ok: true, mode: 'live', result, taskId }
- * - 后端不可达 / 失败 / 超时：{ ok: false, mode: 'demo', result: profile.demoData(), error }
+ * - 后端不可达 / 超时：{ ok: false, mode: 'demo', result: profile.demoData(), error, errorKind:'network'|'timeout' }
+ * - 业务失败（upload 4xx / 任务 failed）：{ ok: false, mode: 'live'失败态, error, errorKind:'business'|'failed' } 不降级演示数据
  * - 用户取消：{ ok: false, aborted: true }
  */
 export async function runReconcileTask(
@@ -392,6 +395,7 @@ export async function runReconcileTask(
       mode: 'demo',
       result: profile.demoData(),
       error: `后端不可达（${API_BASE || '同源'}）· 已降级为演示数据（${msg}）`,
+      errorKind: 'network',
     }
   }
 
@@ -421,12 +425,14 @@ export async function runReconcileTask(
         return { ok: true, mode: 'live', result, taskId }
       }
       if (st.status === 'failed') {
+        // 任务执行失败（数据/引擎错误）：不降级演示数据，暴露真实错误供修复
         return {
           ok: false,
-          mode: 'demo',
-          result: profile.demoData(),
+          mode: 'live',
           taskId,
-          error: `对账任务执行失败（${st.error || st.message || '未知错误'}）· 已降级为演示数据`,
+          result: undefined,
+          error: `对账任务执行失败（${st.error || st.message || '未知错误'}）`,
+          errorKind: 'failed',
         }
       }
       if (Date.now() > deadline) {
@@ -439,11 +445,25 @@ export async function runReconcileTask(
     if ((e as Error).name === 'AbortError') {
       return { ok: false, aborted: true, mode: 'demo', result: profile.demoData() }
     }
+    const isApi = e instanceof ReconcileApiError
+    const status = isApi ? (e as ReconcileApiError).status : 0
+    // 业务错误（upload 4xx）：不降级演示数据，暴露真实错误供修复
+    if (isApi && status >= 400 && status < 500) {
+      return {
+        ok: false,
+        mode: 'live',
+        result: undefined,
+        error: (e as Error).message,
+        errorKind: 'business',
+      }
+    }
+    const kind = isApi && status === 0 && /超时/.test((e as Error).message) ? 'timeout' : 'network'
     return {
       ok: false,
       mode: 'demo',
       result: profile.demoData(),
       error: `${(e as Error).message} · 已降级为演示数据`,
+      errorKind: kind,
     }
   }
 }

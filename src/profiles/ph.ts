@@ -31,9 +31,14 @@ const slots: CountryProfile['slots'] = [
     fields: 'order_no · pay_type · pay_amt · store_no · order_status',
   },
   {
-    key: 'antom', title: 'Antom 账单', desc: 'Online + Offline Antom Settlement · CSV',
+    key: 'antom_online', title: 'Online Antom 账单', desc: 'Online Antom Settlement · CSV',
     required: true, icon: 'text', color: '#b45309', kind: 'bill',
-    fields: 'customizedField2 · referenceTransactionId · amount · settle',
+    fields: 'customizedField2(=pay_no) · transactionAmountValue · paymentTime',
+  },
+  {
+    key: 'antom_offline', title: 'Offline Antom 账单', desc: 'Offline Antom Settlement · CSV',
+    required: true, icon: 'text', color: '#7c3aed', kind: 'bill',
+    fields: 'referenceTransactionId(=posOrderNo) · transactionAmountValue · paymentTime',
   },
   {
     key: 'grab', title: 'Grab 账单', desc: 'Grab 结算账单 · CSV',
@@ -121,7 +126,8 @@ const showModules: CountryProfile['showModules'] = [
 // ---------- 文件名归属校验 ----------
 const uploadHints: CountryProfile['uploadHints'] = {
   oms: ['oms', 'order', '交易'],
-  antom: ['antom', 'settlement', 'alipay', 'razer'],
+  antom_online: ['online', 'antom', 'settlement', 'alipay'],
+  antom_offline: ['offline', 'antom', 'settlement', 'razer'],
   grab: ['grab', 'gpay', 'grabpay'],
   bank: ['hsbc', 'bdo', 'bank', 'statement', '流水'],
 }
@@ -146,16 +152,27 @@ const mappingTemplates: CountryProfile['mappingTemplates'] = [
     ],
   },
   {
-    file: 'Antom 账单',
+    file: 'Online Antom 账单',
     requiredOk: true,
-    sourceOptions: ['customizedField2', 'referenceTransactionId', 'amount', 'settle', 'payment_method', 'settle_date'],
+    sourceOptions: ['customizedField2', 'transactionAmountValue', 'paymentTime', 'paymentMethodType', 'transactionType'],
     rows: [
-      { target: 'customized_field', label: 'Online 关联键', source: 'customizedField2', required: false, type: 'direct' },
-      { target: 'ref_transaction', label: 'Offline 关联键', source: 'referenceTransactionId', required: false, type: 'direct' },
-      { target: 'amount', label: '金额（PHP）', source: 'amount', required: true, type: 'direct' },
-      { target: 'settle', label: '结算净额（PHP）', source: 'settle', required: false, type: 'direct' },
-      { target: 'payment_method', label: '支付方式（GCASH/CARD/MAYA）', source: 'payment_method', required: false, type: 'direct' },
-      { target: 'settle_date', label: '结算日期', source: 'settle_date', required: false, type: 'direct' },
+      { target: 'order_no', label: '商户订单号', source: 'customizedField2', required: true, hint: '= OMS pay_no（CHP）' },
+      { target: 'amount', label: '金额（PHP）', source: 'transactionAmountValue', required: true, type: 'direct' },
+      { target: 'pay_date', label: '支付时间', source: 'paymentTime', required: true, type: 'direct' },
+      { target: 'pay_method', label: '支付方式（GCASH/CARD/MAYA）', source: 'paymentMethodType', required: false, type: 'direct' },
+      { target: 'txn_type', label: '交易类型', source: 'transactionType', required: false, type: 'direct' },
+    ],
+  },
+  {
+    file: 'Offline Antom 账单',
+    requiredOk: true,
+    sourceOptions: ['referenceTransactionId', 'transactionAmountValue', 'paymentTime', 'paymentMethodType', 'transactionType'],
+    rows: [
+      { target: 'order_no', label: 'POS 单号', source: 'referenceTransactionId', required: true, hint: '= OMS ext.posOrderNo' },
+      { target: 'amount', label: '金额（PHP）', source: 'transactionAmountValue', required: true, type: 'direct' },
+      { target: 'pay_date', label: '支付时间', source: 'paymentTime', required: true, type: 'direct' },
+      { target: 'pay_method', label: '支付方式', source: 'paymentMethodType', required: false, type: 'direct' },
+      { target: 'txn_type', label: '交易类型', source: 'transactionType', required: false, type: 'direct' },
     ],
   },
   {

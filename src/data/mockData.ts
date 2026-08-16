@@ -164,6 +164,8 @@ export interface RunOutcome {
   taskId?: string
   error?: string
   aborted?: boolean
+  /** 错误分类：network/timeout=可降级 / business/failed=业务失败不降级 */
+  errorKind?: 'network' | 'timeout' | 'business' | 'failed'
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
@@ -195,17 +197,8 @@ export async function runReconciliation(
     return { result: profile.demoData(), mode: 'demo' }
   }
 
-  // ---- 他国（无后端配置）→ 直接演示模式，避免向后端传未知国家 ----
-  if (profile.id !== 'vn') {
-    await sleep(600)
-    return {
-      result: profile.demoData(),
-      mode: 'demo',
-      error: `${profile.countryZh} 尚未接入后端配置（configs/${profile.id}.json），使用演示数据`,
-    }
-  }
-
-  // ---- 真实链路：上传 → 轮询 → 结果；失败自动降级演示 ----
+  // ---- 真实链路：上传 → 轮询 → 结果 ----
+  // （不再写死 vn：health 探针 + errorKind 区分，业务失败不静默降级）
   const out = await runReconcileTask(files as SlotFiles, profile, {
     mapping,
     signal,
@@ -219,11 +212,22 @@ export async function runReconciliation(
     const adapted = adaptBackendResult(out.result as BackendRunAllResult, profile, out.taskId)
     return { result: adapted, mode: 'live', taskId: out.taskId }
   }
-  // 降级：result 已是 profile.demoData()
+  // 业务失败（business/failed）：不降级演示数据，暴露真实错误供修复
+  if (out.errorKind === 'business' || out.errorKind === 'failed') {
+    return {
+      result: profile.demoData(),
+      mode: 'demo',
+      taskId: out.taskId,
+      error: out.error,
+      errorKind: out.errorKind,
+    }
+  }
+  // 降级（network/timeout）：result 已是 profile.demoData()
   return {
     result: out.result as ReconResult,
     mode: 'demo',
     taskId: out.taskId,
     error: out.error,
+    errorKind: out.errorKind,
   }
 }
