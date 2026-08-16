@@ -23,51 +23,61 @@ function fmtIDRFull(n: number): string {
   return `Rp ${n.toLocaleString('en-US')}`
 }
 
-// ---------- 文件槽位（印尼：OMS + 聚合/平台账单 + BCA 银行） ----------
+// ---------- 文件槽位（印尼 settlement 模型：结算账单 + BCA 银行） ----------
 const slots: CountryProfile['slots'] = [
   {
     key: 'oms', title: 'OMS 订单', desc: '订单主表导出 · CSV / XLSX',
-    required: true, icon: 'excel', color: '#b91c1c', kind: 'oms',
+    required: false, icon: 'excel', color: '#b91c1c', kind: 'oms',
     fields: 'order_no · pay_type · pay_amt · store_no · order_status',
   },
   {
-    key: 'xendit', title: 'Xendit 账单', desc: '聚合支付（GoPay/OVO/DANA/QRIS/CC）· CSV',
+    key: 'xendit', title: 'Xendit 结算账单', desc: 'Xendit 聚合（GoPay/OVO/DANA/QRIS/CC）结算 · CSV',
     required: true, icon: 'text', color: '#b45309', kind: 'bill',
-    fields: 'settlement_batch_id · amount · settle_date',
+    fields: 'settle_date · amount · batch_id',
   },
   {
-    key: 'platform', title: '超级 App 账单', desc: 'Grab(VISIONET) / Gojek(DAB) · CSV',
+    key: 'gojek', title: 'Gojek 结算账单', desc: 'Gojek(DAB) 每日结算 · CSV',
     required: false, icon: 'text', color: '#6d28d9', kind: 'bill',
-    fields: 'Settlement ID · Store · Transfer Date · Total',
+    fields: 'Settlement Date · Net Amount',
+  },
+  {
+    key: 'grab', title: 'Grab 结算账单', desc: 'Grab(VISIONET) 每日结算 · CSV',
+    required: false, icon: 'text', color: '#7c3aed', kind: 'bill',
+    fields: '日期 · Total(打款)',
+  },
+  {
+    key: 'bca', title: 'BCA 商户账单', desc: 'BCA 商户直连（QRIS/Debit/CC）· CSV',
+    required: false, icon: 'text', color: '#0ea5e9', kind: 'bill',
+    fields: '日期 · 账单Nett(TQ)',
   },
   {
     key: 'bank', title: 'BCA 银行流水', desc: 'BCA 主收款户对账单 · CSV/XLSX',
-    required: false, icon: 'excel', color: '#15803d', kind: 'bank',
+    required: true, icon: 'excel', color: '#15803d', kind: 'bank',
     fields: 'tran_date · amount · Keterangan(摘要)',
   },
 ]
 
-// ---------- 通道定义（印尼 L1：XENDIT / SUPERAPP / BCA / CASH） ----------
+// ---------- 通道定义（印尼 settlement：XENDIT / GOJEK / GRAB / BCA） ----------
 const channels: CountryProfile['channels'] = [
   {
     channel: 'XENDIT',
     label: 'Xendit 聚合（GoPay/OVO/DANA/QRIS/CC）',
-    note: 'Xendit 22 大批次结算 ↔ BCA 单笔到账，settlement_batch_id × amount',
+    note: 'Xendit 22 大批次结算 ↔ BCA 单笔到账（月累计对平，跨月 23.55 亿）',
   },
   {
-    channel: 'SUPERAPP',
-    label: '超级 App（Grab · Gojek）',
-    note: 'Grab 走 VISIONET（Settlement ID×Store×Transfer Date×Total）；Gojek 走 DAB（Settlement Date+1天×Net）',
+    channel: 'GOJEK',
+    label: 'Gojek（DAB · GoPay）',
+    note: 'Settlement Date + 1 天 = BCA 到账日，按日净额对平',
+  },
+  {
+    channel: 'GRAB',
+    label: 'Grab（VISIONET）',
+    note: 'Settlement ID×Store×Transfer Date×Total；跨月效应大，月累计对平',
   },
   {
     channel: 'BCA',
     label: 'BCA 商户直连（QRIS/Debit/CC）',
     note: 'Merchant Payment Date × Merchant ID × Nett Amount（TQ=QRIS / TD=Debit / TC=CC）',
-  },
-  {
-    channel: 'CASH',
-    label: '现金 · 门店缴存',
-    note: 'OMS 现金销售按门店聚合 vs 银行缴存',
   },
 ]
 
@@ -85,7 +95,7 @@ const rootEnums: CountryProfile['rootEnums'] = [
 const rules: CountryProfile['rules'] = [
   { key: 'r1', name: 'OMS 四维总览', desc: 'business_type / order_source / pay_type / status 统计' },
   { key: 'r2', name: 'L1 · Xendit 聚合', desc: 'Xendit settlement_batch_id ↔ BCA 单笔到账（22 批次）' },
-  { key: 'r3', name: 'L1 · 超级 App', desc: 'Grab VISIONET / Gojek DAB 按结算 Key 匹配' },
+  { key: 'r3', name: 'L1 · Gojek/Grab', desc: 'Gojek DAB / Grab VISIONET 按结算 Key 匹配' },
   { key: 'r4', name: 'L1 · BCA 商户直连', desc: 'TQ/TD/TC 三类 ↔ BCA 银行流水按日对平' },
   { key: 'r5', name: 'L2 · 银行对账', desc: '通道结算 ↔ BCA 流水按日对平（跨月分解）' },
   { key: 'r6', name: '免单 / 退款 / 全覆盖', desc: '免单验证 · 退款/取消归集 · 全覆盖检查' },
@@ -122,7 +132,9 @@ const showModules: CountryProfile['showModules'] = [
 const uploadHints: CountryProfile['uploadHints'] = {
   oms: ['oms', 'order', '交易'],
   xendit: ['xendit', 'settlement', '聚合'],
-  platform: ['grab', 'gojek', 'visionet', 'dab', 'superapp', '平台'],
+  gojek: ['gojek', 'dab', 'gopay'],
+  grab: ['grab', 'visionet'],
+  bca: ['bca', '商户', 'qris', 'debit', 'credit'],
   bank: ['bca', 'bank', 'statement', '流水', 'keterangan'],
 }
 
@@ -157,14 +169,33 @@ const mappingTemplates: CountryProfile['mappingTemplates'] = [
     ],
   },
   {
-    file: '超级 App 账单',
+    file: 'Gojek 结算账单',
     requiredOk: false,
-    sourceOptions: ['Settlement ID', 'Store Name', 'Transfer Date', 'Total', 'Net Sales', 'Amount'],
+    sourceOptions: ['Settlement Date', 'Net Amount', 'Amount', '笔数'],
     rows: [
-      { target: 'settlement_id', label: '结算 ID', source: 'Settlement ID', required: false, type: 'direct' },
-      { target: 'store_name', label: '门店名', source: 'Store Name', required: false, type: 'direct' },
-      { target: 'transfer_date', label: '转账日期', source: 'Transfer Date', required: false, type: 'direct' },
-      { target: 'total', label: '实收 Total', source: 'Total', required: false, type: 'direct' },
+      { target: 'settle_date', label: '结算日期', source: 'Settlement Date', required: true, type: 'direct' },
+      { target: 'amount', label: '净额 Net Amount', source: 'Net Amount', required: true, type: 'direct' },
+      { target: 'count', label: '笔数', source: '笔数', required: false, type: 'direct' },
+    ],
+  },
+  {
+    file: 'Grab 结算账单',
+    requiredOk: false,
+    sourceOptions: ['日期', 'Total(打款)', 'Amount', 'Net Sales', 'Grab Settlement 数'],
+    rows: [
+      { target: 'settle_date', label: '结算日期', source: '日期', required: true, type: 'direct' },
+      { target: 'amount', label: '打款 Total', source: 'Total(打款)', required: true, type: 'direct' },
+      { target: 'count', label: '结算数', source: 'Grab Settlement 数', required: false, type: 'direct' },
+    ],
+  },
+  {
+    file: 'BCA 商户账单',
+    requiredOk: false,
+    sourceOptions: ['日期', '账单Nett(TQ)', '账单笔数', '银行到账(QRIS)'],
+    rows: [
+      { target: 'settle_date', label: '对账日期', source: '日期', required: true, type: 'direct' },
+      { target: 'amount', label: '账单 Nett', source: '账单Nett(TQ)', required: true, type: 'direct' },
+      { target: 'count', label: '账单笔数', source: '账单笔数', required: false, type: 'direct' },
     ],
   },
   {
@@ -192,10 +223,10 @@ const ui: CountryProfile['ui'] = {
 // ---------- 演示数据生成器（基于印尼 6 月真实结论比例） ----------
 function buildDemoData(): ReconResult {
   const channelsData: ChannelRecon[] = [
-    { channel: 'XENDIT', label: 'Xendit 聚合（GoPay/OVO/DANA/QRIS/CC）', omsCount: 128000, billCount: 22, matchedCount: 126000, matchRate: 98.44, unmatchedCount: 2000, unmatchedAmt: 2355000000, status: 'success', note: 'Xendit 22 大批次结算 ↔ BCA 单笔到账，settlement_batch_id × amount' },
-    { channel: 'SUPERAPP', label: '超级 App（Grab · Gojek）', omsCount: 96200, billCount: 1203, matchedCount: 91800, matchRate: 95.42, unmatchedCount: 4400, unmatchedAmt: 577000000, status: 'warning', note: 'Grab VISIONET / Gojek DAB 按结算 Key 匹配' },
-    { channel: 'BCA', label: 'BCA 商户直连（QRIS/Debit/CC）', omsCount: 85000, billCount: 87, matchedCount: 81500, matchRate: 95.88, unmatchedCount: 3500, unmatchedAmt: 498000000, status: 'warning', note: 'TQ=QRIS / TD=Debit / TC=CC，Merchant Payment Date×MID×Nett' },
-    { channel: 'CASH', label: '现金 · 门店缴存', omsCount: 32000, billCount: 46, matchedCount: 30600, matchRate: 95.63, unmatchedCount: 2, unmatchedAmt: 8000000, status: 'success', note: 'OMS 现金销售按门店聚合 vs 银行缴存' },
+    { channel: 'XENDIT', label: 'Xendit 聚合（GoPay/OVO/DANA/QRIS/CC）', omsCount: 22, billCount: 22, matchedCount: 22, matchRate: 100, unmatchedCount: 0, unmatchedAmt: 2355000000, status: 'success', note: 'Xendit 大批次结算 ↔ BCA 到账，月累计对平（跨月 23.55 亿）' },
+    { channel: 'GOJEK', label: 'Gojek（DAB · GoPay）', omsCount: 30, billCount: 30, matchedCount: 29, matchRate: 96.14, unmatchedCount: 1, unmatchedAmt: 2000000, status: 'success', note: 'Settlement Date + 1 天 = BCA 到账日，按日净额对平' },
+    { channel: 'GRAB', label: 'Grab（VISIONET）', omsCount: 31, billCount: 31, matchedCount: 31, matchRate: 100, unmatchedCount: 0, unmatchedAmt: 577000000, status: 'warning', note: 'Settlement ID×Store×Transfer Date×Total；跨月效应大，月累计对平' },
+    { channel: 'BCA', label: 'BCA 商户直连（QRIS/Debit/CC）', omsCount: 31, billCount: 31, matchedCount: 29, matchRate: 97.05, unmatchedCount: 2, unmatchedAmt: 498000000, status: 'warning', note: 'TQ=QRIS / TD=Debit / TC=CC，按日对平' },
   ]
 
   const bankDaily = Array.from({ length: 30 }, (_, i) => {
@@ -215,7 +246,7 @@ function buildDemoData(): ReconResult {
   const discrepancies: Discrepancy[] = [
     { id: 'D-0001', channel: 'XENDIT', root: 'I1', rootLabel: '跨月结算（次月到账）', orderNo: 'XENDIT-20260601001', storeNo: 'ID012', amount: 2355000000, time: '2026-06-30', description: 'Xendit 6 月末结算批次在 7 月到账，跨月 23.55 亿 IDR。', suggestion: '等 7 月 Xendit Settlement 报表补。', status: 'pending', omsSide: 'Xendit 结算 125.98 亿', billSide: 'BCA 到账 149.53 亿' },
     { id: 'D-0002', channel: 'BCA', root: 'I3', rootLabel: '信用卡 CC 工作日时点差', orderNo: 'BCA-20260615022', storeNo: 'ID008', amount: 265000000, time: '2026-06-15', description: '信用卡 CC 每周 5 天银行到账 > TC，疑似 Foreign Card 延迟结算。', suggestion: '与 BCA 确认 Foreign Card / 银联中转通道。', status: 'pending', omsSide: '商户账单 TC 11.73 亿', billSide: 'BCA CC 到账 14.38 亿' },
-    { id: 'D-0003', channel: 'SUPERAPP', root: 'I4', rootLabel: 'Grab Completed 未结算', orderNo: 'GRAB-20260625001', storeNo: 'ID006', amount: 473000000, time: '2026-06-25', description: 'Grab Completed 状态订单 6/22-6/30 生成未结算，7 月陆续到账。', suggestion: '等 7 月 Grab Report 补。', status: 'pending', omsSide: 'Grab Total 27.71 亿', billSide: 'BCA VISIONET 到账 33.48 亿' },
+    { id: 'D-0003', channel: 'GRAB', root: 'I4', rootLabel: 'Grab Completed 未结算', orderNo: 'GRAB-20260625001', storeNo: 'ID006', amount: 473000000, time: '2026-06-25', description: 'Grab Completed 状态订单 6/22-6/30 生成未结算，7 月陆续到账。', suggestion: '等 7 月 Grab Report 补。', status: 'pending', omsSide: 'Grab Total 27.71 亿', billSide: 'BCA VISIONET 到账 33.48 亿' },
     { id: 'D-0004', channel: 'L2', root: 'B1', rootLabel: '非收单流水', amount: 3480000000, expected: 0, diffAmt: 3480000000, time: '2026-06-30', description: 'FX 跨境 / BI-FAST / 加盟金 / 利息 等非商户收单，不纳入对账。', suggestion: '排除非收单流水。', status: 'pending', omsSide: 'BCA 入账 34.80 亿', billSide: '非收单，不核对' },
   ]
 
